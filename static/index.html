@@ -10,7 +10,7 @@
   <body>
     <div class="allContent">
       <h1>GoConvert</h1>
-      <h4>File Converter</h4>
+      <h4>Image/Document File Converter</h4>
       <p>Upload your file and select which format you would like to convert it to</p>
       <form enctype="multipart/form-data" action="/upload" method="post">
         <input type="file" name="myFile" />
@@ -18,6 +18,7 @@
         <select name="imageFormat" id="imageFormat">
           <option value="png">PNG</option>
           <option value="jpg">JPG/JPEG</option>
+          <option value="pdf">PDF</option>
         </select>
         <input type="submit" value="upload" />
       </form>

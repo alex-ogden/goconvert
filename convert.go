@@ -13,6 +13,8 @@ import (
 	"math/rand"
 	"net/http"
 	"os"
+
+	"gopkg.in/gographics/imagick.v2/imagick"
 )
 
 type DownloadData struct {
@@ -191,6 +193,19 @@ func convertImage(imageBytes []byte, imageFormat, outFilePath string) error {
 			}
 
 			return nil
+		}
+	case "application/pdf":
+		if imageFormat == "png" {
+
+		} else {
+			imagick.Initialize()
+			defer imagick.Terminate()
+			mw := imagick.NewMagickWand()
+			defer mw.Destroy()
+			mw.ReadImage("test.pdf")
+			mw.SetIteratorIndex(0) // This being the page offset
+			mw.SetImageFormat("jpg")
+			mw.WriteImage("test.jpg")
 		}
 	}
 	return fmt.Errorf("Unkown content type. Unable to convert %#v to %s", contentType, imageFormat)
