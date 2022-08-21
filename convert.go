@@ -8,11 +8,13 @@ import (
 	"html/template"
 	"image/jpeg"
 	"image/png"
-	"io/ioutil"
+	"io"
 	"log"
 	"math/rand"
+	"mime/multipart"
 	"net/http"
 	"os"
+	"strings"
 
 	"gopkg.in/gographics/imagick.v2/imagick"
 )
@@ -91,10 +93,9 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 
 	// Handle our form upload
 	// Max size is ~10MB
-
 	r.Body = http.MaxBytesReader(w, r.Body, MAX_UPLOAD_SIZE)
 	if err := r.ParseMultipartForm(MAX_UPLOAD_SIZE); err != nil {
-		log.Printf("Upload request was too large!", err)
+		log.Print("Upload request was too large!", err)
 		http.Error(w, "Upload request was too large!", http.StatusBadRequest)
 		return
 	}
@@ -112,24 +113,29 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 	log.Printf("Uploaded File Name: %+v\n", handler.Filename)
 	log.Printf("Uploaded File Size: %+vkB\n", (handler.Size / 1000))
 	log.Printf("Uploaded File MIME Header: %+v\n", handler.Header)
-	log.Printf("Required Image Format: %s\n", format)
+	log.Printf("Required Format: %s\n", format)
 
 	// Create temp file
 	targetFileName := fmt.Sprintf("image-%s.%s", fmt.Sprint(rand.Int()), format)
 	targetFilePath := fmt.Sprintf("%s/%s", targetDirectory, targetFileName)
-	// Read content of uploaded file into byte array
-	log.Printf("Reading the contents of the uploaded file into memory\n")
-	fileBytes, err := ioutil.ReadAll(file)
-	if err != nil {
-		log.Print(err, "\n")
-	}
 
 	// Convert the image data into other format
-	err = convertImage(fileBytes, format, targetFilePath)
-	if err != nil {
-		log.Print(err, "\n")
-	}
+	if strings.Contains(".pdf", handler.Filename) {
+		// Uploaded file is a PDF file
+		targetFileName = convertPDFToImage(handler.Filename, format, file)
+	} else {
+		// Read content of uploaded file into byte array
+		log.Printf("Reading the contents of the uploaded file into memory\n")
+		fileBytes, err := io.ReadAll(file)
+		if err != nil {
+			log.Print(err, "\n")
+		}
 
+		err = convertImage(fileBytes, format, targetFilePath)
+		if err != nil {
+			log.Print(err, "\n")
+		}
+	}
 	log.Printf("Successfully converted %+v to %s\n", handler.Filename, format)
 	log.Printf("Redirecting to download page\n")
 	http.Redirect(w, r, fmt.Sprintf("/download?filename=%s", targetFileName), 301)
@@ -194,19 +200,6 @@ func convertImage(imageBytes []byte, imageFormat, outFilePath string) error {
 
 			return nil
 		}
-	case "application/pdf":
-		if imageFormat == "png" {
-
-		} else {
-			imagick.Initialize()
-			defer imagick.Terminate()
-			mw := imagick.NewMagickWand()
-			defer mw.Destroy()
-			mw.ReadImage("test.pdf")
-			mw.SetIteratorIndex(0) // This being the page offset
-			mw.SetImageFormat("jpg")
-			mw.WriteImage("test.jpg")
-		}
 	}
 	return fmt.Errorf("Unkown content type. Unable to convert %#v to %s", contentType, imageFormat)
 }
@@ -239,4 +232,54 @@ func handleCleanup(w http.ResponseWriter, r *http.Request) {
 		log.Print(err, "\n")
 	}
 	http.Redirect(w, r, "/", 301)
+}
+
+func convertPDFToImage(filename, desiredFormat string, uploadedFile multipart.File) string {
+	// Take the uploaded file, read it into memory and write that to disk
+	pdfDirectory := "static/pdf"
+	pdfFileName := "upload.pdf"
+	pdfFullPath := pdfDirectory + "/" + pdfFileName
+	if _, err := os.Stat(pdfDirectory); errors.Is(err, os.ErrNotExist) {
+		log.Printf("Creating directory %s as it doesn't exist\n", pdfDirectory)
+		err := os.Mkdir(pdfDirectory, os.ModePerm)
+		if err != nil {
+			log.Println(err)
+		}
+	}
+
+	imageDirectory := "static/images"
+	imageName := fmt.Sprintf("upload-%s.%s", fmt.Sprint(rand.Int()), desiredFormat)
+	imageFullPath := imageDirectory + "/" + imageName
+	if _, err := os.Stat(imageDirectory); errors.Is(err, os.ErrNotExist) {
+		log.Printf("Creating directory %s as it doesn't exist\n", imageDirectory)
+		err := os.Mkdir(imageDirectory, os.ModePerm)
+		if err != nil {
+			log.Println(err)
+		}
+	}
+
+	defer uploadedFile.Close()
+	fileBytes, err := io.ReadAll(uploadedFile)
+	if err != nil {
+		log.Println(err)
+	}
+	if err := os.WriteFile(pdfFullPath, fileBytes, 0600); err != nil {
+		log.Println(err)
+	}
+
+	// Initialise imagemagick
+	imagick.Initialize()
+	defer imagick.Terminate()
+
+	// Create a new wand
+	mw := imagick.NewMagickWand()
+	defer mw.Destroy()
+
+	// Read the PDF file into memory (we have to do this as imagemagick won't take a slice of bytes, it has to be a written file)
+	mw.ReadImage(pdfFullPath)
+	mw.SetIteratorIndex(0) // This being the page offset
+	mw.SetImageFormat(desiredFormat)
+	mw.WriteImage(imageFullPath)
+
+	return imageName
 }
