@@ -3,6 +3,7 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"html/template"
 	"image/jpeg"
@@ -76,6 +77,16 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("New request for file upload\n")
 	targetDirectory := "static/images"
+
+	log.Printf("Checking for existence of directory: %s\n", targetDirectory)
+	if _, err := os.Stat(targetDirectory); errors.Is(err, os.ErrNotExist) {
+		log.Printf("Creating directory %s as it doesn't exist\n", targetDirectory)
+		err := os.Mkdir(targetDirectory, os.ModePerm)
+		if err != nil {
+			log.Println(err)
+		}
+	}
+
 	// Handle our form upload
 	// Max size is ~10MB
 
