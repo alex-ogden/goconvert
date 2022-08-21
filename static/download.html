@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html>
+    <head>
+		<link rel="stylesheet" href="download.css"/>
+        <script>
+            window.onload=function() {
+                if (document.getElementById('dl') != null || document.getElementById('dl') != "") {
+                    console.log("Clicking on dl link");
+                    document.getElementById('dl').click();
+                }
+            }
+        </script>
+    </head>
+    <body>
+		<div class="allContent">
+        	<div onload="download()"></div>
+        	<a id="dl" style="display: none" 
+        	    href="images/{{.ImageName}}" 
+        	    download="{{.ImageName}}">Download</a>
+			<h1>Results:</h1>
+			<p>If the automatic download didn't work for you, right click > Save from the image below, or click <a href="/cleanup?filepath=static/images/{{.ImageName}}">here</a> to go home</p>
+			<div class="imgbox">
+				<img class="center-fit" src="images/{{.ImageName}}">
+			</div>
+		</div>
+    </body>
+</html>

@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="X-UA-Compatible" content="ie=edge" />
+    <link rel="stylesheet" href="index.css"/>
+    <title>GoConvert | File Conversion</title>
+  </head>
+  <body>
+    <div class="allContent">
+      <h1>GoConvert</h1>
+      <h4>File Converter</h4>
+      <p>Upload your file and select which format you would like to convert it to</p>
+      <form enctype="multipart/form-data" action="/upload" method="post">
+        <input type="file" name="myFile" />
+        <label for="imageFormat">Choose format to convert to:</label>
+        <select name="imageFormat" id="imageFormat">
+          <option value="png">PNG</option>
+          <option value="jpg">JPG/JPEG</option>
+        </select>
+        <input type="submit" value="upload" />
+      </form>
+    </div>
+  </body>
+</html>
