@@ -16,7 +16,7 @@ import (
 	"os"
 	"strings"
 
-	"gopkg.in/gographics/imagick.v2/imagick"
+	"gopkg.in/gographics/imagick.v3/imagick"
 )
 
 type DownloadData struct {
@@ -249,6 +249,7 @@ func convertPDFToImage(filename, desiredFormat string, uploadedFile multipart.Fi
 		}
 	}
 
+	// Set values for the image file to follow
 	imageDirectory := "static/images"
 	imageName := fmt.Sprintf("upload-%s.%s", fmt.Sprint(rand.Int()), desiredFormat)
 	imageFullPath := imageDirectory + "/" + imageName
@@ -261,10 +262,12 @@ func convertPDFToImage(filename, desiredFormat string, uploadedFile multipart.Fi
 	}
 
 	defer uploadedFile.Close()
+	// Read the uploaded (PDF) file into memory
 	fileBytes, err := io.ReadAll(uploadedFile)
 	if err != nil {
 		log.Println(err)
 	}
+	// Write the PDF file to disk
 	if err := os.WriteFile(pdfFullPath, fileBytes, 0600); err != nil {
 		log.Println(err)
 	}
