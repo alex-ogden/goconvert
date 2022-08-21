@@ -264,12 +264,14 @@ func convertPDFToImage(filename, desiredFormat string, uploadedFile multipart.Fi
 	}
 
 	defer uploadedFile.Close()
+
 	// Read the uploaded (PDF) file into memory
 	log.Println("Reading uploaded PDF into memory")
 	fileBytes, err := io.ReadAll(uploadedFile)
 	if err != nil {
 		log.Println("ERROR: ", err)
 	}
+
 	// Write the PDF file to disk
 	log.Println("Writing the uploaded PDF file to disk")
 	if err := os.WriteFile(pdfFullPath, fileBytes, 0600); err != nil {
@@ -283,6 +285,7 @@ func convertPDFToImage(filename, desiredFormat string, uploadedFile multipart.Fi
 	if err != nil {
 		log.Println("ERROR: ", err)
 	}
+
 	numPages, err := strconv.ParseInt(string(out.String()), 10, 32)
 	if err != nil {
 		log.Println("ERROR: ", err)
