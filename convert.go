@@ -89,7 +89,7 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 		log.Printf("Creating directory %s as it doesn't exist\n", targetDirectory)
 		err := os.Mkdir(targetDirectory, os.ModePerm)
 		if err != nil {
-			log.Println("ERROR: ", err)
+			log.Fatal(err)
 		}
 	}
 
@@ -107,7 +107,7 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 	file, handler, err := r.FormFile("myFile")
 	if err != nil {
 		log.Printf("Error retrieving file\n")
-		log.Print(err, "\n")
+		log.Fatal(err)
 		return
 	}
 
@@ -125,19 +125,22 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 	if strings.Contains(handler.Filename, ".pdf") {
 		log.Println("A PDF file has been uploaded")
 		// Uploaded file is a PDF file
-		targetFileName = convertPDFToImage(handler.Filename, format, file)
+		targetFileName, err = convertPDFToImage(handler.Filename, format, file)
+		if err != nil {
+			log.Fatal(err)
+		}
 	} else {
 		log.Println("An image file has been uploaded")
 		// Read content of uploaded file into byte array
 		log.Printf("Reading the contents of the uploaded file into memory\n")
 		fileBytes, err := io.ReadAll(file)
 		if err != nil {
-			log.Print(err, "\n")
+			log.Fatal(err)
 		}
 
 		err = convertImage(fileBytes, format, targetFilePath)
 		if err != nil {
-			log.Print(err, "\n")
+			log.Fatal(err)
 		}
 	}
 	log.Printf("Successfully converted %+v to %s\n", handler.Filename, format)
@@ -155,7 +158,7 @@ func convertImage(imageBytes []byte, imageFormat, outFilePath string) error {
 	targetFile, err := os.Create(outFilePath)
 	log.Printf("Creating a temporary file at: %s\n", outFilePath)
 	if err != nil {
-		log.Print(err, "\n")
+		return err
 	}
 	defer targetFile.Close()
 
@@ -211,9 +214,7 @@ func convertImage(imageBytes []byte, imageFormat, outFilePath string) error {
 // Download the image to the user's computer
 func handleDownload(w http.ResponseWriter, r *http.Request) {
 	filenameParam := r.URL.Query()["filename"]
-
 	fileName := filenameParam[0]
-
 	log.Printf("Got request to download file: %s", fileName)
 
 	// Finally parse the template for downloading the image back to the user's PC
@@ -222,7 +223,9 @@ func handleDownload(w http.ResponseWriter, r *http.Request) {
 		ImageName: fileName,
 	}
 	log.Printf("Rendering download page\n")
-	tmpl.Execute(w, data)
+	if err := tmpl.Execute(w, data); err != nil {
+		log.Fatal(err)
+	}
 }
 
 func handleCleanup(w http.ResponseWriter, r *http.Request) {
@@ -233,12 +236,12 @@ func handleCleanup(w http.ResponseWriter, r *http.Request) {
 	log.Printf("Removing file: %s", filePath)
 
 	if err := os.Remove(filePath); err != nil {
-		log.Print(err, "\n")
+		log.Fatal(err)
 	}
 	http.Redirect(w, r, "/", 301)
 }
 
-func convertPDFToImage(filename, desiredFormat string, uploadedFile multipart.File) string {
+func convertPDFToImage(filename, desiredFormat string, uploadedFile multipart.File) (string, error) {
 	// Take the uploaded file, read it into memory and write that to disk
 	pdfDirectory := "static/pdf"
 	pdfFileName := "upload.pdf"
@@ -247,7 +250,7 @@ func convertPDFToImage(filename, desiredFormat string, uploadedFile multipart.Fi
 		log.Printf("Creating directory %s as it doesn't exist\n", pdfDirectory)
 		err := os.Mkdir(pdfDirectory, os.ModePerm)
 		if err != nil {
-			log.Println("ERROR: ", err)
+			return "", err
 		}
 	}
 
@@ -259,7 +262,7 @@ func convertPDFToImage(filename, desiredFormat string, uploadedFile multipart.Fi
 		log.Printf("Creating directory %s as it doesn't exist\n", imageDirectory)
 		err := os.Mkdir(imageDirectory, os.ModePerm)
 		if err != nil {
-			log.Println("ERROR: ", err)
+			return "", err
 		}
 	}
 
@@ -269,13 +272,13 @@ func convertPDFToImage(filename, desiredFormat string, uploadedFile multipart.Fi
 	log.Println("Reading uploaded PDF into memory")
 	fileBytes, err := io.ReadAll(uploadedFile)
 	if err != nil {
-		log.Println("ERROR: ", err)
+		return "", err
 	}
 
 	// Write the PDF file to disk
 	log.Println("Writing the uploaded PDF file to disk")
 	if err := os.WriteFile(pdfFullPath, fileBytes, 0600); err != nil {
-		log.Println("ERROR: ", err)
+		return "", err
 	}
 
 	cmd := exec.Command("identify", "-format", "%n", pdfFullPath)
@@ -283,13 +286,15 @@ func convertPDFToImage(filename, desiredFormat string, uploadedFile multipart.Fi
 	cmd.Stdout = &out
 	err = cmd.Run()
 	if err != nil {
-		log.Println("ERROR: ", err)
+		return "", err
 	}
 
 	numPages, err := strconv.ParseInt(string(out.String()), 10, 32)
 	if err != nil {
-		log.Println("ERROR: ", err)
+		return "", err
 	}
+
+	log.Printf("We have %s pages in the PDF\n", string(out.String()))
 
 	// Initialise imagemagick
 	log.Println("Initialising imagemagick")
@@ -303,36 +308,37 @@ func convertPDFToImage(filename, desiredFormat string, uploadedFile multipart.Fi
 
 	log.Println("Setting high resolution for resulting image")
 	if err := mw.SetResolution(100, 100); err != nil {
-		log.Println("ERROR: ", err)
+		return "", err
 	}
 
 	// Read the PDF file into memory (we have to do this as imagemagick won't take a slice of bytes, it has to be a written file)
 	log.Printf("Reading the PDF %s into memory\n", pdfFullPath)
 	if err := mw.ReadImage(pdfFullPath); err != nil {
-		log.Println("ERROR: ", err)
+		return "", err
 	}
 
 	if err := mw.SetImageAlphaChannel(imagick.ALPHA_CHANNEL_REMOVE); err != nil {
-		log.Println("ERROR: ", err)
+		return "", err
 	}
 
 	// Set any compression (100 = max quality)
 	if err := mw.SetCompressionQuality(100); err != nil {
-		log.Println("ERROR: ", err)
+		return "", err
 	}
 
 	for i := int64(0); i < numPages; i++ {
+		log.Printf("Converting page #%s", fmt.Sprint(i))
 		mw.SetIteratorIndex(int(i)) // This being the page offset
 
 		log.Printf("Setting the wand to write file as format: %s", desiredFormat)
 		if err := mw.SetImageFormat(desiredFormat); err != nil {
-			log.Println("ERROR: ", err)
+			return "", err
 		}
 
 		log.Printf("Writing file: %s", imageFullPath)
 		if err := mw.WriteImage(imageFullPath); err != nil {
-			log.Println("ERROR: ", err)
+			return "", err
 		}
 	}
-	return imageName
+	return imageName, nil
 }
