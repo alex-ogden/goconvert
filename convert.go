@@ -120,10 +120,12 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 	targetFilePath := fmt.Sprintf("%s/%s", targetDirectory, targetFileName)
 
 	// Convert the image data into other format
-	if strings.Contains(".pdf", handler.Filename) {
+	if strings.Contains(handler.Filename, ".pdf") {
+		log.Println("A PDF file has been uploaded")
 		// Uploaded file is a PDF file
 		targetFileName = convertPDFToImage(handler.Filename, format, file)
 	} else {
+		log.Println("An image file has been uploaded")
 		// Read content of uploaded file into byte array
 		log.Printf("Reading the contents of the uploaded file into memory\n")
 		fileBytes, err := io.ReadAll(file)
