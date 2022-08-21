@@ -1,15 +1,18 @@
 #!/bin/bash
 
-site_directory="/root/sites/goconvert/"
-scripts_directory="/root/.scripts/container-scripts/"
+# Vars
+site_directory="$HOME/sites/goconvert/"
+scripts_directory="$HOME/.scripts/container-scripts"
 container_name="goconvert"
 script_name="30-start-$container_name.sh"
 
-cd "$site_directory"
+# Build the new image with newest changes
+cd "$site_directory" || exit
 git pull
 docker build -t "$container_name" .
-cd "$scripts_directory"
+
+# Remove currently running container
 docker rm -f "$container_name"
-bash "$script_name"
-clear
-docker logs --follow "$container_name"
+
+# Deploy the new container image
+bash "$scripts_directory/$script_name"
