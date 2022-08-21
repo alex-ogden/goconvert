@@ -14,6 +14,8 @@ import (
 	"mime/multipart"
 	"net/http"
 	"os"
+	"os/exec"
+	"strconv"
 	"strings"
 
 	"gopkg.in/gographics/imagick.v3/imagick"
@@ -87,7 +89,7 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 		log.Printf("Creating directory %s as it doesn't exist\n", targetDirectory)
 		err := os.Mkdir(targetDirectory, os.ModePerm)
 		if err != nil {
-			log.Println(err)
+			log.Println("ERROR: ", err)
 		}
 	}
 
@@ -245,7 +247,7 @@ func convertPDFToImage(filename, desiredFormat string, uploadedFile multipart.Fi
 		log.Printf("Creating directory %s as it doesn't exist\n", pdfDirectory)
 		err := os.Mkdir(pdfDirectory, os.ModePerm)
 		if err != nil {
-			log.Println(err)
+			log.Println("ERROR: ", err)
 		}
 	}
 
@@ -257,34 +259,77 @@ func convertPDFToImage(filename, desiredFormat string, uploadedFile multipart.Fi
 		log.Printf("Creating directory %s as it doesn't exist\n", imageDirectory)
 		err := os.Mkdir(imageDirectory, os.ModePerm)
 		if err != nil {
-			log.Println(err)
+			log.Println("ERROR: ", err)
 		}
 	}
 
 	defer uploadedFile.Close()
 	// Read the uploaded (PDF) file into memory
+	log.Println("Reading uploaded PDF into memory")
 	fileBytes, err := io.ReadAll(uploadedFile)
 	if err != nil {
-		log.Println(err)
+		log.Println("ERROR: ", err)
 	}
 	// Write the PDF file to disk
+	log.Println("Writing the uploaded PDF file to disk")
 	if err := os.WriteFile(pdfFullPath, fileBytes, 0600); err != nil {
-		log.Println(err)
+		log.Println("ERROR: ", err)
+	}
+
+	cmd := exec.Command("identify", "-format", "%n", pdfFullPath)
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	err = cmd.Run()
+	if err != nil {
+		log.Println("ERROR: ", err)
+	}
+	numPages, err := strconv.ParseInt(string(out.String()), 10, 32)
+	if err != nil {
+		log.Println("ERROR: ", err)
 	}
 
 	// Initialise imagemagick
+	log.Println("Initialising imagemagick")
 	imagick.Initialize()
 	defer imagick.Terminate()
 
 	// Create a new wand
+	log.Println("Creating a new wand")
 	mw := imagick.NewMagickWand()
 	defer mw.Destroy()
 
-	// Read the PDF file into memory (we have to do this as imagemagick won't take a slice of bytes, it has to be a written file)
-	mw.ReadImage(pdfFullPath)
-	mw.SetIteratorIndex(0) // This being the page offset
-	mw.SetImageFormat(desiredFormat)
-	mw.WriteImage(imageFullPath)
+	log.Println("Setting high resolution for resulting image")
+	if err := mw.SetResolution(100, 100); err != nil {
+		log.Println("ERROR: ", err)
+	}
 
+	// Read the PDF file into memory (we have to do this as imagemagick won't take a slice of bytes, it has to be a written file)
+	log.Printf("Reading the PDF %s into memory\n", pdfFullPath)
+	if err := mw.ReadImage(pdfFullPath); err != nil {
+		log.Println("ERROR: ", err)
+	}
+
+	if err := mw.SetImageAlphaChannel(imagick.ALPHA_CHANNEL_REMOVE); err != nil {
+		log.Println("ERROR: ", err)
+	}
+
+	// Set any compression (100 = max quality)
+	if err := mw.SetCompressionQuality(100); err != nil {
+		log.Println("ERROR: ", err)
+	}
+
+	for i := int64(0); i < numPages; i++ {
+		mw.SetIteratorIndex(int(i)) // This being the page offset
+
+		log.Printf("Setting the wand to write file as format: %s", desiredFormat)
+		if err := mw.SetImageFormat(desiredFormat); err != nil {
+			log.Println("ERROR: ", err)
+		}
+
+		log.Printf("Writing file: %s", imageFullPath)
+		if err := mw.WriteImage(imageFullPath); err != nil {
+			log.Println("ERROR: ", err)
+		}
+	}
 	return imageName
 }
