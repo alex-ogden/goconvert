@@ -25,8 +25,8 @@ type DownloadData struct {
 	ImageName string
 }
 
-// Set max upload size to be 10MB
-const MAX_UPLOAD_SIZE = 10 * 1024 * 1024
+// Set max upload size to be 50MB
+const MAX_UPLOAD_SIZE = 50 * 1024 * 1024
 
 func main() {
 	// Define the port for our server to run on
