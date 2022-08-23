@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"html/template"
 	"image/jpeg"
 	"image/png"
 	"io"
@@ -16,137 +15,9 @@ import (
 	"os"
 	"os/exec"
 	"strconv"
-	"strings"
 
 	"gopkg.in/gographics/imagick.v3/imagick"
 )
-
-type DownloadData struct {
-	ImageName string
-}
-
-// Set max upload size to be 50MB
-const MAX_UPLOAD_SIZE = 50 * 1024 * 1024
-
-func main() {
-	// Define the port for our server to run on
-	srv_host := "0.0.0.0"
-	srv_port := os.Getenv("PORT")
-	// If we don't have the PORT env var, default to port 4433
-	if srv_port == "" {
-		log.Print("Couldn't find environment variable: PORT\n")
-		log.Print("Defaulting to port: 4433\n")
-		srv_port = "4433"
-	}
-
-	srv_host = srv_host + ":" + srv_port
-	runServer(srv_host)
-}
-
-func runServer(srv_host string) {
-	// Define endpoints
-	// FileServer
-	fileServer := http.FileServer(http.Dir("./static"))
-	http.Handle("/", fileServer)
-	http.HandleFunc("/health", handleHealthCheck)
-	http.HandleFunc("/upload", handleUpload)
-	http.HandleFunc("/download", handleDownload)
-	http.HandleFunc("/cleanup", handleCleanup)
-	// Start the server
-	log.Printf("Starting web server on: %s\n", srv_host)
-	if err := http.ListenAndServe(srv_host, nil); err != nil {
-		log.Fatal("Could not start server: ", err)
-	}
-}
-
-// Health check
-func handleHealthCheck(w http.ResponseWriter, r *http.Request) {
-	if r.Method != "GET" {
-		log.Printf("Request method recieved was not GET\n")
-		log.Printf("Request method: %s\n", r.Method)
-		http.Error(w, "Method not supported", http.StatusNotFound)
-		return
-	}
-
-	log.Printf("Got request for /health - responding with Healthy")
-	fmt.Fprintf(w, "Healthy")
-}
-
-func handleUpload(w http.ResponseWriter, r *http.Request) {
-	// Make sure we only handle POST requests
-	if r.Method != "POST" {
-		log.Printf("Request method recieved was not POST\n")
-		log.Printf("Request method: %s\n", r.Method)
-		http.Error(w, "Method not supported", http.StatusNotFound)
-		return
-	}
-
-	log.Printf("New request for file upload\n")
-	targetDirectory := "static/images"
-
-	log.Printf("Checking for existence of directory: %s\n", targetDirectory)
-	if _, err := os.Stat(targetDirectory); errors.Is(err, os.ErrNotExist) {
-		log.Printf("Creating directory %s as it doesn't exist\n", targetDirectory)
-		err := os.Mkdir(targetDirectory, os.ModePerm)
-		if err != nil {
-			log.Fatal(err)
-		}
-	}
-
-	// Handle our form upload
-	// Max size is ~10MB
-	r.Body = http.MaxBytesReader(w, r.Body, MAX_UPLOAD_SIZE)
-	if err := r.ParseMultipartForm(MAX_UPLOAD_SIZE); err != nil {
-		log.Print("Upload request was too large!", err)
-		http.Error(w, "Upload request was too large!", http.StatusBadRequest)
-		return
-	}
-
-	// Get file and required format
-	format := r.FormValue("imageFormat")
-	file, handler, err := r.FormFile("myFile")
-	if err != nil {
-		log.Printf("Error retrieving file\n")
-		log.Fatal(err)
-		return
-	}
-
-	defer file.Close()
-	log.Printf("Uploaded File Name: %+v\n", handler.Filename)
-	log.Printf("Uploaded File Size: %+vkB\n", (handler.Size / 1000))
-	log.Printf("Uploaded File MIME Header: %+v\n", handler.Header)
-	log.Printf("Required Format: %s\n", format)
-
-	// Create temp file
-	targetFileName := fmt.Sprintf("image-%s.%s", fmt.Sprint(rand.Int()), format)
-	targetFilePath := fmt.Sprintf("%s/%s", targetDirectory, targetFileName)
-
-	// Convert the image data into other format
-	if strings.Contains(handler.Filename, ".pdf") {
-		log.Println("A PDF file has been uploaded")
-		// Uploaded file is a PDF file
-		targetFileName, err = convertPDFToImage(handler.Filename, format, file)
-		if err != nil {
-			log.Fatal(err)
-		}
-	} else {
-		log.Println("An image file has been uploaded")
-		// Read content of uploaded file into byte array
-		log.Printf("Reading the contents of the uploaded file into memory\n")
-		fileBytes, err := io.ReadAll(file)
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		err = convertImage(fileBytes, format, targetFilePath)
-		if err != nil {
-			log.Fatal(err)
-		}
-	}
-	log.Printf("Successfully converted %+v to %s\n", handler.Filename, format)
-	log.Printf("Redirecting to download page\n")
-	http.Redirect(w, r, fmt.Sprintf("/download?filename=%s", targetFileName), 301)
-}
 
 // Converts the image format and returns a slice of bytes
 func convertImage(imageBytes []byte, imageFormat, outFilePath string) error {
@@ -211,39 +82,9 @@ func convertImage(imageBytes []byte, imageFormat, outFilePath string) error {
 	return fmt.Errorf("Unkown content type. Unable to convert %#v to %s", contentType, imageFormat)
 }
 
-// Download the image to the user's computer
-func handleDownload(w http.ResponseWriter, r *http.Request) {
-	filenameParam := r.URL.Query()["filename"]
-	fileName := filenameParam[0]
-	log.Printf("Got request to download file: %s", fileName)
-
-	// Finally parse the template for downloading the image back to the user's PC
-	tmpl := template.Must(template.ParseFiles("static/download.html"))
-	data := DownloadData{
-		ImageName: fileName,
-	}
-	log.Printf("Rendering download page\n")
-	if err := tmpl.Execute(w, data); err != nil {
-		log.Fatal(err)
-	}
-}
-
-func handleCleanup(w http.ResponseWriter, r *http.Request) {
-	log.Print("Got request for cleanup")
-	filepathParam := r.URL.Query()["filepath"]
-	filePath := filepathParam[0]
-
-	log.Printf("Removing file: %s", filePath)
-
-	if err := os.Remove(filePath); err != nil {
-		log.Fatal(err)
-	}
-	http.Redirect(w, r, "/", 301)
-}
-
 func convertPDFToImage(filename, desiredFormat string, uploadedFile multipart.File) (string, error) {
 	// Take the uploaded file, read it into memory and write that to disk
-	pdfDirectory := "static/pdf"
+	pdfDirectory := STATIC_DIR + "/pdf"
 	pdfFileName := "upload.pdf"
 	pdfFullPath := pdfDirectory + "/" + pdfFileName
 	if _, err := os.Stat(pdfDirectory); errors.Is(err, os.ErrNotExist) {
@@ -255,7 +96,7 @@ func convertPDFToImage(filename, desiredFormat string, uploadedFile multipart.Fi
 	}
 
 	// Set values for the image file to follow
-	imageDirectory := "static/images"
+	imageDirectory := STATIC_DIR + "/images"
 	imageName := fmt.Sprintf("upload-%s.%s", fmt.Sprint(rand.Int()), desiredFormat)
 	imageFullPath := imageDirectory + "/" + imageName
 	if _, err := os.Stat(imageDirectory); errors.Is(err, os.ErrNotExist) {
