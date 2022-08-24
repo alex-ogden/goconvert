@@ -6,7 +6,8 @@ import (
 )
 
 type DownloadData struct {
-	ImageName string
+	FilePath string
+	FileName string
 }
 
 // Set max upload size to be 50MB

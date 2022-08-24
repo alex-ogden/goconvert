@@ -20,7 +20,7 @@
         const ext = name.substring(lastDot + 1);
         const button = document.getElementById('submit')
 
-        if (ext == ".pdf" && imageFormat.value == "PNG") {
+        if (ext == ".pdf" && fileFormat.value == "PNG") {
           typeError.value = "PDFs cannot be converted to PNGs!";
           button.disabled = true;
         } else {
@@ -38,8 +38,8 @@
       <p>Upload your file and select which format you would like to convert it to</p>
       <form enctype="multipart/form-data" action="/upload" method="post">
         <input id='myFile' type="file" name="myFile" onChange='getFileNameWithExt(event)'>
-        <label for="imageFormat">Choose format to convert to:</label>
-        <select name="imageFormat" id="imageFormat">
+        <label for="fileFormat">Choose format to convert to:</label>
+        <select name="fileFormat" id="fileFormat">
           <option value="png">PNG</option>
           <option value="jpg">JPG/JPEG</option>
           <option value="pdf">PDF</option>

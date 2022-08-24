@@ -10,7 +10,14 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
+)
+
+const (
+	imagesDir  = STATIC_DIR + "/images"
+	pdfDir     = STATIC_DIR + "/pdf"
+	uploadsDir = STATIC_DIR + "/uploads"
 )
 
 func runServer(srv_host string) {
@@ -51,20 +58,14 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Printf("New request for file upload\n")
-	targetDirectory := STATIC_DIR + "/images"
+	// Create our required directories
+	requiredDirs := [3]string{imagesDir, pdfDir, uploadsDir}
 
-	log.Printf("Checking for existence of directory: %s\n", targetDirectory)
-	if _, err := os.Stat(targetDirectory); errors.Is(err, os.ErrNotExist) {
-		log.Printf("Creating directory %s as it doesn't exist\n", targetDirectory)
-		err := os.Mkdir(targetDirectory, os.ModePerm)
-		if err != nil {
-			log.Fatal(err)
-		}
+	for _, directory := range requiredDirs {
+		createDirectories(directory)
 	}
 
-	// Handle our form upload
-	// Max size is ~10MB
+	// Process the request
 	r.Body = http.MaxBytesReader(w, r.Body, MAX_UPLOAD_SIZE)
 	if err := r.ParseMultipartForm(MAX_UPLOAD_SIZE); err != nil {
 		log.Print("Upload request was too large!", err)
@@ -72,9 +73,18 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get file and required format
-	format := r.FormValue("imageFormat")
+	// Get file from request
 	file, handler, err := r.FormFile("myFile")
+	// Read file into memory
+	fileBytes, err := io.ReadAll(file)
+
+	// Work out content type (i.e application/pdf) then form regex to
+	// get just the "pdf" part
+	contentType := http.DetectContentType(fileBytes)
+	targetRegex := regexp.MustCompile("(application|image)/")
+
+	currentFormat := targetRegex.ReplaceAllString(contentType, "")
+	requiredFormat := r.FormValue("fileFormat")
 	if err != nil {
 		log.Printf("Error retrieving file\n")
 		log.Fatal(err)
@@ -82,52 +92,73 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 	}
 
 	defer file.Close()
+
+	// Log info about incoming file
 	log.Printf("Uploaded File Name: %+v\n", handler.Filename)
 	log.Printf("Uploaded File Size: %+vkB\n", (handler.Size / 1000))
 	log.Printf("Uploaded File MIME Header: %+v\n", handler.Header)
-	log.Printf("Required Format: %s\n", format)
+	log.Printf("Required Format: %s\n", requiredFormat)
 
-	// Create temp file
-	targetFileName := fmt.Sprintf("image-%s.%s", fmt.Sprint(rand.Int()), format)
-	targetFilePath := fmt.Sprintf("%s/%s", targetDirectory, targetFileName)
+	var convertedFilePath string
 
-	// Convert the image data into other format
-	if strings.Contains(handler.Filename, ".pdf") {
-		log.Println("A PDF file has been uploaded")
-		// Uploaded file is a PDF file
-		targetFileName, err = convertPDFToImage(handler.Filename, format, file)
-		if err != nil {
-			log.Fatal(err)
+	switch currentFormat {
+	case "pdf":
+		// PDF file uploaded
+		switch requiredFormat {
+		case "pdf":
+			convertedFileName := fmt.Sprintf("pdf-%s.%s", string(rand.Int()), requiredFormat)
+			convertedFilePath := fmt.Sprintf("%s/%s", pdfDir, convertedFileName)
+			err := os.WriteFile(convertedFilePath, fileBytes, 0600)
+			if err != nil {
+				log.Fatal(err)
+			}
+		case "png", "jpg", "jpeg":
+			// PDF -> Image
+			convertedFilePath, err = convertPDFToImage(currentFormat, requiredFormat, uploadsDir, imagesDir, fileBytes)
+			if err != nil {
+				log.Fatal(err)
+			}
 		}
-	} else {
-		log.Println("An image file has been uploaded")
-		// Read content of uploaded file into byte array
-		log.Printf("Reading the contents of the uploaded file into memory\n")
-		fileBytes, err := io.ReadAll(file)
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		err = convertImage(fileBytes, format, targetFilePath)
-		if err != nil {
-			log.Fatal(err)
+	case "png", "jpg", "jpeg":
+		// Image file uploaded
+		switch requiredFormat {
+		case "pdf":
+			// Image -> PDF
+			convertedFilePath, err = convertImageToPDF(currentFormat, requiredFormat, uploadsDir, pdfDir, fileBytes)
+			if err != nil {
+				log.Fatal(err)
+			}
+		case "png", "jpg", "jpeg":
+			// Image -> Image
+			convertedFilePath, err = convertImage(currentFormat, requiredFormat, imagesDir, fileBytes)
+			if err != nil {
+				log.Fatal(err)
+			}
 		}
 	}
-	log.Printf("Successfully converted %+v to %s\n", handler.Filename, format)
+
+	log.Printf("Successfully converted %+v to %s\n", handler.Filename, requiredFormat)
 	log.Printf("Redirecting to download page\n")
-	http.Redirect(w, r, fmt.Sprintf("/download?filename=%s", targetFileName), 301)
+	http.Redirect(w, r, fmt.Sprintf("/download?filepath=%s", convertedFilePath), 301)
 }
 
 // Download the image to the user's computer
 func handleDownload(w http.ResponseWriter, r *http.Request) {
-	filenameParam := r.URL.Query()["filename"]
-	fileName := filenameParam[0]
-	log.Printf("Got request to download file: %s", fileName)
+	filepathParam := r.URL.Query()["filepath"]
+	filePath := filepathParam[0]
+
+	// Remove the ../static/ from the filepath to put it right relative to the html file
+	// Also remove images/ to get just the file name for download
+	filePath = strings.ReplaceAll(filePath, "../static/", "")
+	fileName := strings.ReplaceAll(filePath, "images/", "")
+
+	log.Printf("Got request to download file: %s", filePath)
 
 	// Finally parse the template for downloading the image back to the user's PC
 	tmpl := template.Must(template.ParseFiles(STATIC_DIR + "/download.html"))
 	data := DownloadData{
-		ImageName: fileName,
+		FilePath: filePath,
+		FileName: fileName,
 	}
 	log.Printf("Rendering download page\n")
 	if err := tmpl.Execute(w, data); err != nil {
@@ -136,25 +167,36 @@ func handleDownload(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleCleanup(w http.ResponseWriter, r *http.Request) {
-	log.Print("Got request for cleanup")
+	log.Println("Got request for cleanup")
 
-	// Directories to clean - images and PDF directories
-	var dirsToClean = [2]string{STATIC_DIR + "/images", STATIC_DIR + "/pdf"}
+	// Directories to clean - uploads, images and PDF directories
+	var dirsToClean = [3]string{STATIC_DIR + "/images", STATIC_DIR + "/pdf", STATIC_DIR + "/uploads"}
 
 	// Find all files in each dir and remove
 	for _, directory := range dirsToClean {
-		log.Printf("Removing files in directory: %s", directory)
+		log.Printf("Removing files in directory: %s\n", directory)
 
 		filesToRemove, err := filepath.Glob(directory + "/*")
 		if err != nil {
 			log.Fatal(err)
 		}
 		for _, file := range filesToRemove {
-			log.Printf("\tRemoving file: %s", file)
+			log.Printf("\tRemoving file: %s\n", file)
 			if err := os.Remove(file); err != nil {
 				log.Fatal(err)
 			}
 		}
 	}
-	http.Redirect(w, r, "/", 301)
+	//http.Redirect(w, r, "/", 301)
+}
+
+func createDirectories(directory string) {
+	log.Printf("Checking for existence of directory: %s\n", directory)
+	if _, err := os.Stat(directory); errors.Is(err, os.ErrNotExist) {
+		log.Printf("Creating directory %s as it doesn't exist\n", directory)
+		err := os.Mkdir(directory, os.ModePerm)
+		if err != nil {
+			log.Fatal(err)
+		}
+	}
 }

@@ -3,126 +3,103 @@ package main
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"image/jpeg"
 	"image/png"
-	"io"
 	"log"
 	"math/rand"
-	"mime/multipart"
-	"net/http"
 	"os"
 	"os/exec"
 	"strconv"
 
+	"github.com/br3w0r/goitopdf/itopdf"
 	"gopkg.in/gographics/imagick.v3/imagick"
 )
 
 // Converts the image format and returns a slice of bytes
-func convertImage(imageBytes []byte, imageFormat, outFilePath string) error {
-	// Check the format of the incoming image
-	log.Printf("Detecting content type of incoming image\n")
-	contentType := http.DetectContentType(imageBytes)
-
+func convertImage(currentFormat, requiredFormat, imagesDir string, fileBytes []byte) (string, error) {
 	// Create our outfile
-	targetFile, err := os.Create(outFilePath)
-	log.Printf("Creating a temporary file at: %s\n", outFilePath)
-	if err != nil {
-		return err
-	}
-	defer targetFile.Close()
-
-	// Decide what to do to convert to each format
-	switch contentType {
-	case "image/png":
-		// We have a PNG file
-		img, err := png.Decode(bytes.NewReader(imageBytes))
-		if err != nil {
-			return err
-		}
-
-		if imageFormat == "png" {
-			log.Printf("Converting %#v to %s\n", contentType, imageFormat)
-			if err := png.Encode(targetFile, img); err != nil {
-				return err
-			}
-
-			return nil
-		} else /*More file formats to come*/ {
-			log.Printf("Converting %#v to %s\n", contentType, imageFormat)
-			if err := jpeg.Encode(targetFile, img, nil); err != nil {
-				return err
-			}
-		}
-		// We can have jpegs come in as jpg or jpeg
-	case "image/jpg", "image/jpeg":
-		// We have a JPG/JPEG file
-		img, err := jpeg.Decode(bytes.NewReader(imageBytes))
-		if err != nil {
-			return err
-		}
-
-		if imageFormat == "png" {
-			log.Printf("Converting %#v to %s\n", contentType, imageFormat)
-			if err := png.Encode(targetFile, img); err != nil {
-				return err
-			}
-
-			return nil
-		} else /*More file formats to come*/ {
-			log.Printf("Converting %#v to %s\n", contentType, imageFormat)
-			if err := jpeg.Encode(targetFile, img, nil); err != nil {
-				return err
-			}
-
-			return nil
-		}
-	}
-	return fmt.Errorf("Unkown content type. Unable to convert %#v to %s", contentType, imageFormat)
-}
-
-func convertPDFToImage(filename, desiredFormat string, uploadedFile multipart.File) (string, error) {
-	// Take the uploaded file, read it into memory and write that to disk
-	pdfDirectory := STATIC_DIR + "/pdf"
-	pdfFileName := "upload.pdf"
-	pdfFullPath := pdfDirectory + "/" + pdfFileName
-	if _, err := os.Stat(pdfDirectory); errors.Is(err, os.ErrNotExist) {
-		log.Printf("Creating directory %s as it doesn't exist\n", pdfDirectory)
-		err := os.Mkdir(pdfDirectory, os.ModePerm)
-		if err != nil {
-			return "", err
-		}
-	}
-
-	// Set values for the image file to follow
-	imageDirectory := STATIC_DIR + "/images"
-	imageName := fmt.Sprintf("upload-%s.%s", fmt.Sprint(rand.Int()), desiredFormat)
-	imageFullPath := imageDirectory + "/" + imageName
-	if _, err := os.Stat(imageDirectory); errors.Is(err, os.ErrNotExist) {
-		log.Printf("Creating directory %s as it doesn't exist\n", imageDirectory)
-		err := os.Mkdir(imageDirectory, os.ModePerm)
-		if err != nil {
-			return "", err
-		}
-	}
-
-	defer uploadedFile.Close()
-
-	// Read the uploaded (PDF) file into memory
-	log.Println("Reading uploaded PDF into memory")
-	fileBytes, err := io.ReadAll(uploadedFile)
+	convertedFileName := fmt.Sprintf("image-%s.%s", fmt.Sprint(rand.Int()), requiredFormat)
+	convertedFilePath := fmt.Sprintf("%s/%s", imagesDir, convertedFileName)
+	convertedFile, err := os.Create(convertedFilePath)
 	if err != nil {
 		return "", err
 	}
+
+	defer convertedFile.Close()
+
+	// Decide what to do to convert to each format
+	switch currentFormat {
+	case "png":
+		// We have a PNG file
+		log.Println("Decoding uploaded PNG file")
+		decodedFile, err := png.Decode(bytes.NewReader(fileBytes))
+		if err != nil {
+			return "", err
+		}
+
+		log.Printf("Converting %#v to %s\n", currentFormat, requiredFormat)
+		if requiredFormat == "png" {
+			err := png.Encode(convertedFile, decodedFile)
+			if err != nil {
+				return "", err
+			}
+
+			return convertedFilePath, nil
+		} else {
+			err := jpeg.Encode(convertedFile, decodedFile, nil)
+			if err != nil {
+				return "", err
+			}
+
+			return convertedFilePath, nil
+		}
+		// We can have jpegs come in as jpg or jpeg
+	case "jpg", "jpeg":
+		// We have a JPG/JPEG file
+		log.Println("Decoding uploaded JPEG/JPG file")
+		decodedFile, err := jpeg.Decode(bytes.NewReader(fileBytes))
+		if err != nil {
+			return "", err
+		}
+
+		log.Printf("Converting %#v to %s\n", currentFormat, requiredFormat)
+		if requiredFormat == "png" {
+			err := png.Encode(convertedFile, decodedFile)
+			if err != nil {
+				return "", err
+			}
+
+			return convertedFilePath, nil
+		} else {
+			err := jpeg.Encode(convertedFile, decodedFile, nil)
+			if err != nil {
+				return "", err
+			}
+
+			return convertedFilePath, nil
+		}
+	}
+	return "", fmt.Errorf("Unkown content type. Unable to convert %#v to %s", currentFormat, requiredFormat)
+}
+
+func convertPDFToImage(currentFormat, requiredFormat, uploadsDir, imagesDir string, fileBytes []byte) (string, error) {
+	// Create our outfile
+	currentFileName := fmt.Sprintf("upload-%s.%s", fmt.Sprint(rand.Int()), currentFormat)
+	currentFilePath := fmt.Sprintf("%s/%s", uploadsDir, currentFileName)
+
+	convertedFileName := fmt.Sprintf("image-%s.%s", fmt.Sprint(rand.Int()), requiredFormat)
+	convertedFilePath := fmt.Sprintf("%s/%s", imagesDir, convertedFileName)
 
 	// Write the PDF file to disk
 	log.Println("Writing the uploaded PDF file to disk")
-	if err := os.WriteFile(pdfFullPath, fileBytes, 0600); err != nil {
+	err := os.WriteFile(currentFilePath, fileBytes, 0600)
+	if err != nil {
 		return "", err
 	}
 
-	cmd := exec.Command("identify", "-format", "%n", pdfFullPath)
+	// Work out the number of pages in the PDF document
+	cmd := exec.Command("identify", "-format", "%n", currentFilePath)
 	var out bytes.Buffer
 	cmd.Stdout = &out
 	err = cmd.Run()
@@ -134,7 +111,6 @@ func convertPDFToImage(filename, desiredFormat string, uploadedFile multipart.Fi
 	if err != nil {
 		return "", err
 	}
-
 	log.Printf("We have %s pages in the PDF\n", string(out.String()))
 
 	// Initialise imagemagick
@@ -153,8 +129,8 @@ func convertPDFToImage(filename, desiredFormat string, uploadedFile multipart.Fi
 	}
 
 	// Read the PDF file into memory (we have to do this as imagemagick won't take a slice of bytes, it has to be a written file)
-	log.Printf("Reading the PDF %s into memory\n", pdfFullPath)
-	if err := mw.ReadImage(pdfFullPath); err != nil {
+	log.Printf("Reading the PDF %s into memory\n", currentFilePath)
+	if err := mw.ReadImage(currentFilePath); err != nil {
 		return "", err
 	}
 
@@ -171,15 +147,73 @@ func convertPDFToImage(filename, desiredFormat string, uploadedFile multipart.Fi
 		log.Printf("Converting page #%s", fmt.Sprint(i))
 		mw.SetIteratorIndex(int(i)) // This being the page offset
 
-		log.Printf("Setting the wand to write file as format: %s", desiredFormat)
-		if err := mw.SetImageFormat(desiredFormat); err != nil {
+		log.Printf("Setting the wand to write file as format: %s", requiredFormat)
+		if err := mw.SetImageFormat(requiredFormat); err != nil {
 			return "", err
 		}
 
-		log.Printf("Writing file: %s", imageFullPath)
-		if err := mw.WriteImage(imageFullPath); err != nil {
+		log.Printf("Writing file: %s", convertedFilePath)
+		err := mw.WriteImage(convertedFilePath)
+		if err != nil {
 			return "", err
 		}
 	}
-	return imageName, nil
+	return convertedFilePath, nil
+}
+
+func convertImageToPDF(currentFormat, requiredFormat, uploadsDir, pdfDir string, fileBytes []byte) (string, error) {
+	convertedFileName := fmt.Sprintf("pdf-%s.%s", fmt.Sprint(rand.Int()), requiredFormat)
+	convertedFilePath := fmt.Sprintf("%s/%s", pdfDir, convertedFileName)
+
+	log.Printf("Creating a temporary file at: %s\n", convertedFilePath)
+	convertedFile, err := os.Create(convertedFilePath)
+	if err != nil {
+		return "", err
+	}
+
+	defer convertedFile.Close()
+
+	switch currentFormat {
+	case "png":
+		log.Println("Decoding the PNG data")
+		fileDecoded, err := png.Decode(bytes.NewReader(fileBytes))
+		if err != nil {
+			return "", err
+		}
+
+		log.Println("Re-encoding PNG data and writing to disk")
+		err = png.Encode(convertedFile, fileDecoded)
+		if err != nil {
+			return "", err
+		}
+	case "jpg", "jpeg":
+		log.Println("Decoding the JPEG data")
+		fileDecoded, err := jpeg.Decode(bytes.NewReader(fileBytes))
+		if err != nil {
+			return "", err
+		}
+
+		log.Println("Re-encoding JPEG data and writing to disk")
+		err = jpeg.Encode(convertedFile, fileDecoded, nil)
+		if err != nil {
+			return "", err
+		}
+	}
+
+	log.Println("Creating new ImageToPDF instance")
+	pdf := itopdf.NewInstance()
+
+	log.Println("Detecting image file to convert to PDF")
+	err = pdf.AddImage(convertedFile.Name())
+	if err != nil {
+		return "", err
+	}
+
+	log.Println("Saving image file as PDF")
+	err = pdf.Save(convertedFilePath)
+	if err != nil {
+		return "", err
+	}
+
+	return convertedFilePath, nil
 }
