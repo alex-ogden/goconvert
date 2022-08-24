@@ -187,7 +187,7 @@ func handleCleanup(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	//http.Redirect(w, r, "/", 301)
+	http.Redirect(w, r, "/", 301)
 }
 
 func createDirectories(directory string) {
