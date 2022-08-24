@@ -1,7 +1,11 @@
 # goconvert
 A simple, web-based file conversion tool written in Go!
 
-### How it works
+The aim of this project is to provide a service to allow users to quickly and efficiently convert files from one format to another. The end goal is to have all of the modern features that people expect (drag-and-drop, amazing UI etc...) all whilst being incredibly fast.
+
+I have recently (as of 24/08/2022) done a small re-write of the conversion functions, the aim of this was to utilise the disk as little as possible, as less interaction with the disk = faster conversion = better experience!
+
+### How it works (from a user-perspective)
 goconvert uses the built-in Go `net/http` package to spin up a simple but responsive http server. From here the user can navigate to `localhost:4433` - here they are greeted with a simple, easy-to-use interface.
 
 ![](docs/images/homescreen.png)
@@ -22,3 +26,10 @@ Once done, the user can then click the hyperlink seen in the text above the resu
 
 ### Handling data
 This program is _supposed_ to be run locally or on your own server. You _can_ run this on your server and have it open to the public however this is not advised (right now, at least) as there is no functionality to automatically cleanup the `images/` and `pdf/` directories and most users will probably take the downloaded file and leave the site, rather than click the home button again. This functionality will be added in the future and is a priority feature/fix.
+
+### Breakdown
+| File | Purpose |
+| ---- | ------- |
+| `main.go` | This file is the startpoint of the program, constant variables and structs are declared here along with the main() entrypoint function |
+| `server.go` | This file handles all server-related functions, this includes functions to handle uploading, downloading and cleaning up of files as well as the creation of required directories (in case they don't exist!) |
+| `convert.go` | This file contains all of the conversion functions, I thought to split this out from `server.go` to make it easier to focus on improving performance (as these are the performance bottlenecks) |
