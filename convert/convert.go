@@ -99,6 +99,7 @@ func convertPDFToImage(currentFormat, requiredFormat, uploadsDir, imagesDir stri
 	}
 
 	// Work out the number of pages in the PDF document
+	log.Println("Working out the number of pages in the PDF file")
 	cmd := exec.Command("identify", "-format", "%n", currentFilePath)
 	var out bytes.Buffer
 	cmd.Stdout = &out
@@ -107,7 +108,7 @@ func convertPDFToImage(currentFormat, requiredFormat, uploadsDir, imagesDir stri
 		return "", err
 	}
 
-	numPages, err := strconv.ParseInt(string(out.String()), 10, 32)
+	numPages, err := strconv.ParseInt(out.String(), 10, 32)
 	if err != nil {
 		return "", err
 	}
