@@ -1,7 +1,6 @@
 package main
 
 import (
-	"errors"
 	"fmt"
 	"html/template"
 	"io"
@@ -146,11 +145,37 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 func handleDownload(w http.ResponseWriter, r *http.Request) {
 	filepathParam := r.URL.Query()["filepath"]
 	filePath := filepathParam[0]
+	log.Printf("Recieved filepath: %s", filePath)
+	// Get info about filePath var for later on...
+	fileInfo, err := os.Stat(filePath)
 
-	// Remove the ../static/ from the filepath to put it right relative to the html file
-	// Also remove images/ to get just the file name for download
-	filePath = strings.ReplaceAll(filePath, "../static/", "")
-	fileName := strings.ReplaceAll(filePath, "images/", "")
+	// Defining this for later on
+	var fileName string
+
+	if fileInfo.IsDir() {
+		log.Println("Directory of images, zipping...")
+		targetZip := fmt.Sprintf("%s/images.zip", filePath)
+		err := zipFiles(filePath, targetZip)
+		if err != nil {
+			log.Fatal(err)
+		}
+		fileName := "images.zip"
+		// Since we recieved a directory name, we should add the name of the zip
+		// to the end of the filePath var so the HTML link can find it
+		filePath = filePath + "/images.zip"
+		filePath = strings.ReplaceAll(filePath, "../static/", "")
+		log.Printf("File to be downloaded: %s", fileName)
+	} else {
+		// Remove images/ from fileName to get just the name of the image
+		// Remove ../static/ from filePath to get directory relative to html file
+		filePath = strings.ReplaceAll(filePath, "../static/", "")
+		fileName := strings.ReplaceAll(filePath, "images/", "")
+		log.Printf("File to be downloaded: %s", fileName)
+	}
+
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	log.Printf("Got request to download file: %s", filePath)
 
@@ -188,15 +213,4 @@ func handleCleanup(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	http.Redirect(w, r, "/", 301)
-}
-
-func createDirectories(directory string) {
-	log.Printf("Checking for existence of directory: %s\n", directory)
-	if _, err := os.Stat(directory); errors.Is(err, os.ErrNotExist) {
-		log.Printf("Creating directory %s as it doesn't exist\n", directory)
-		err := os.Mkdir(directory, os.ModePerm)
-		if err != nil {
-			log.Fatal(err)
-		}
-	}
 }

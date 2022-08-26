@@ -88,9 +88,6 @@ func convertPDFToImage(currentFormat, requiredFormat, uploadsDir, imagesDir stri
 	currentFileName := fmt.Sprintf("upload-%s.%s", fmt.Sprint(rand.Int()), currentFormat)
 	currentFilePath := fmt.Sprintf("%s/%s", uploadsDir, currentFileName)
 
-	convertedFileName := fmt.Sprintf("image-%s.%s", fmt.Sprint(rand.Int()), requiredFormat)
-	convertedFilePath := fmt.Sprintf("%s/%s", imagesDir, convertedFileName)
-
 	// Write the PDF file to disk
 	log.Println("Writing the uploaded PDF file to disk")
 	err := os.WriteFile(currentFilePath, fileBytes, 0600)
@@ -100,19 +97,12 @@ func convertPDFToImage(currentFormat, requiredFormat, uploadsDir, imagesDir stri
 
 	// Work out the number of pages in the PDF document
 	log.Println("Working out the number of pages in the PDF file")
-	cmd := exec.Command("identify", "-format", "%n", currentFilePath)
-	var out bytes.Buffer
-	cmd.Stdout = &out
-	err = cmd.Run()
+	cmd_output, err := exec.Command("convert", currentFilePath, "-set", "option:totpages", "%[n]", "-delete", "1--1", "-format", "%[totpages]", "info:").Output()
 	if err != nil {
 		return "", err
 	}
-
-	numPages, err := strconv.ParseInt(out.String(), 10, 32)
-	if err != nil {
-		return "", err
-	}
-	log.Printf("We have %s pages in the PDF\n", string(out.String()))
+	log.Printf("We have %s pages in the PDF\n", cmd_output)
+	numPages, err := strconv.ParseInt(string(cmd_output), 10, 32)
 
 	// Initialise imagemagick
 	log.Println("Initialising imagemagick")
@@ -135,16 +125,24 @@ func convertPDFToImage(currentFormat, requiredFormat, uploadsDir, imagesDir stri
 		return "", err
 	}
 
+	log.Println("Instructing wand to remove alpha channel")
 	if err := mw.SetImageAlphaChannel(imagick.ALPHA_CHANNEL_REMOVE); err != nil {
 		return "", err
 	}
 
 	// Set any compression (100 = max quality)
+	log.Println("Instructing wand to set maximum quality")
 	if err := mw.SetCompressionQuality(100); err != nil {
 		return "", err
 	}
 
+	// Generate a random number for the file(s)
+	randomNumber := fmt.Sprint(rand.Int())
+
 	for i := int64(0); i < numPages; i++ {
+		convertedFileName := fmt.Sprintf("image-%s-%s.%s", randomNumber, fmt.Sprint(i), requiredFormat)
+		convertedFilePath := fmt.Sprintf("%s/%s", imagesDir, convertedFileName)
+
 		log.Printf("Converting page #%s", fmt.Sprint(i))
 		mw.SetIteratorIndex(int(i)) // This being the page offset
 
@@ -159,7 +157,7 @@ func convertPDFToImage(currentFormat, requiredFormat, uploadsDir, imagesDir stri
 			return "", err
 		}
 	}
-	return convertedFilePath, nil
+	return imagesDir, nil
 }
 
 func convertImageToPDF(currentFormat, requiredFormat, uploadsDir, pdfDir string, fileBytes []byte) (string, error) {
