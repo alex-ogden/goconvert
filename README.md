@@ -33,3 +33,12 @@ This program is _supposed_ to be run locally or on your own server. You _can_ ru
 | `main.go` | This file is the startpoint of the program, constant variables and structs are declared here along with the main() entrypoint function |
 | `server.go` | This file handles all server-related functions, this includes functions to handle uploading, downloading and cleaning up of files as well as the creation of required directories (in case they don't exist!) |
 | `convert.go` | This file contains all of the conversion functions, I thought to split this out from `server.go` to make it easier to focus on improving performance (as these are the performance bottlenecks) |
+| `filesysops.go` | This file contains the os-level functions and operations such as creating directories and zipping image files |
+
+### Things to improve
+There's a lot. Mostly related to how the program handles PDF -> Image conversion
+
+* Working out the number of pages of a PDF document takes a *very long* time. This relies on `imagemagick`'s `identify` program. To solve this issue, I will look for a go-native way to implement this, perhaps there's some sort of file-marker that denotes a new page in the PDF format - something to look into.
+* Converting multiple pages of PDF into high-quality images (especially PNG format) takes a _long_ time. Writing JPG files is much faster however this may not be the preference for some users. I think most of this is down to how inefficient the PDF->Image conversion process is (times that by 100s of pages, and you're often waiting minutes just to write out all of the images)
+* The resulting `.zip` file seems to end up containing a file called `image.zip` (an empty file, not an actual zip archive) - this could be down to the zipping process - should be easy-ish to remedy this issue.
+* Pressing the "home" button after converting your files doesn't appear to cause the program to cleanup the files, despite network inspection confirming that the `/cleanup` url is called and returns a 301 to redirect the user home.
