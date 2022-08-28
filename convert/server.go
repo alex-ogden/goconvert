@@ -40,7 +40,7 @@ func handleHealthCheck(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "GET" {
 		log.Printf("Request method recieved was not GET\n")
 		log.Printf("Request method: %s\n", r.Method)
-		http.Error(w, "Method not supported", http.StatusNotFound)
+		http.Error(w, "Method not supported", http.StatusMethodNotAllowed)
 		return
 	}
 
@@ -53,7 +53,7 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "POST" {
 		log.Printf("Request method recieved was not POST\n")
 		log.Printf("Request method: %s\n", r.Method)
-		http.Error(w, "Method not supported", http.StatusNotFound)
+		http.Error(w, "Method not supported", http.StatusMethodNotAllowed)
 		return
 	}
 
